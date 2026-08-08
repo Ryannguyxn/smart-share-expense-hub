@@ -1,0 +1,259 @@
+Project SmartShareExpenseHub { database_type: 'PostgreSQL' }
+
+Enum user_system_role {
+  USER
+  ADMIN
+}
+
+Enum group_status {
+  ACTIVE
+  ARCHIVED
+}
+
+Enum membership_role {
+  OWNER
+  MEMBER
+}
+
+Enum membership_status {
+  ACTIVE
+  LEFT
+  REMOVED
+}
+
+Enum expense_status {
+  ACTIVE
+  SETTLED
+  DELETED
+}
+
+Enum split_method {
+  EQUAL
+  PERCENTAGE
+  CUSTOM
+}
+
+Enum settlement_status {
+  GENERATED
+  COMPLETED
+}
+
+Enum debt_status {
+  OUTSTANDING
+  PAID
+}
+
+Enum payment_status {
+  PENDING
+  CONFIRMED
+  REJECTED
+}
+
+// Technical reference data. This is not a Domain Entity.
+Table currency_codes {
+  code varchar(3) [pk, not null, note: 'Uppercase ISO 4217 alphabetic code. Seeded and immutable reference data.']
+}
+
+Table users {
+  id uuid [pk, not null]
+  email citext [not null, unique]
+  password_hash varchar(255) [not null]
+  system_role user_system_role [not null, default: 'USER']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+}
+
+Table groups {
+  id uuid [pk, not null]
+  name varchar(100) [not null]
+  currency_code varchar(3) [not null]
+  status group_status [not null, default: 'ACTIVE']
+  archived_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  Indexes {
+    (id, currency_code) [unique, name: 'uq_groups_id_currency']
+  }
+  checks {
+    `currency_code ~ '^[A-Z]{3}$'` [name: 'chk_groups_currency_code_format']
+    `(status = 'ACTIVE' AND archived_at IS NULL) OR (status = 'ARCHIVED' AND archived_at IS NOT NULL)` [name: 'chk_groups_lifecycle']
+  }
+}
+
+Table memberships {
+  id uuid [pk, not null]
+  user_id uuid [not null, ref: > users.id]
+  group_id uuid [not null, ref: > groups.id]
+  role membership_role [not null, default: 'MEMBER']
+  status membership_status [not null, default: 'ACTIVE']
+  joined_at timestamptz [not null, default: `now()`]
+  ended_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  Indexes {
+    (id, group_id) [unique, name: 'uq_memberships_id_group']
+    (group_id, status) [name: 'idx_memberships_group_status']
+    (user_id, status) [name: 'idx_memberships_user_status']
+    (group_id, role, status) [name: 'idx_memberships_group_role_status']
+  }
+  checks {
+    `(status = 'ACTIVE' AND ended_at IS NULL) OR (status IN ('LEFT', 'REMOVED') AND ended_at IS NOT NULL)` [name: 'chk_memberships_lifecycle']
+  }
+}
+
+Table settlements {
+  id uuid [pk, not null]
+  group_id uuid [not null, ref: > groups.id]
+  status settlement_status [not null, default: 'GENERATED']
+  generated_at timestamptz [not null, default: `now()`]
+  completed_at timestamptz
+  Indexes {
+    (id, group_id) [unique, name: 'uq_settlements_id_group']
+    (group_id, status, generated_at) [name: 'idx_settlements_group_status_generated_at']
+  }
+  checks {
+    `(status = 'GENERATED' AND completed_at IS NULL) OR (status = 'COMPLETED' AND completed_at IS NOT NULL)` [name: 'chk_settlements_lifecycle']
+  }
+}
+
+Table expenses {
+  id uuid [pk, not null]
+  group_id uuid [not null]
+  payer_membership_id uuid [not null]
+  description varchar(255) [not null]
+  amount numeric(19,4) [not null]
+  currency_code varchar(3) [not null]
+  expense_date date [not null, default: `current_date`]
+  split_method split_method [not null]
+  status expense_status [not null, default: 'ACTIVE']
+  settlement_id uuid
+  deleted_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  Indexes {
+    (id, group_id) [unique, name: 'uq_expenses_id_group']
+    (group_id, status, expense_date) [name: 'idx_expenses_group_status_date']
+    (settlement_id) [name: 'idx_expenses_settlement']
+  }
+  checks {
+    `amount > 0` [name: 'chk_expenses_amount_positive']
+    `(status = 'ACTIVE' AND deleted_at IS NULL AND settlement_id IS NULL) OR (status = 'DELETED' AND deleted_at IS NOT NULL AND settlement_id IS NULL) OR (status = 'SETTLED' AND deleted_at IS NULL AND settlement_id IS NOT NULL)` [name: 'chk_expenses_lifecycle']
+  }
+}
+
+Table expense_participants {
+  id uuid [pk, not null]
+  expense_id uuid [not null]
+  membership_id uuid [not null]
+  group_id uuid [not null]
+  allocated_amount numeric(19,4) [not null]
+  percentage numeric(7,4)
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  Indexes {
+    (expense_id, membership_id) [unique, name: 'uq_expense_participants_expense_membership']
+    (membership_id) [name: 'idx_expense_participants_membership']
+  }
+  checks {
+    `allocated_amount > 0` [name: 'chk_expense_participants_allocated_amount_positive']
+    `percentage IS NULL OR (percentage > 0 AND percentage <= 100.0000)` [name: 'chk_expense_participants_percentage_range']
+  }
+}
+
+Table debts {
+  id uuid [pk, not null]
+  settlement_id uuid [not null]
+  group_id uuid [not null]
+  debtor_membership_id uuid [not null]
+  creditor_membership_id uuid [not null]
+  original_amount numeric(19,4) [not null]
+  outstanding_amount numeric(19,4) [not null]
+  currency_code varchar(3) [not null]
+  status debt_status [not null, default: 'OUTSTANDING']
+  paid_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  Indexes {
+    (id, group_id, debtor_membership_id, currency_code) [unique, name: 'uq_debts_payment_integrity']
+    (settlement_id) [name: 'idx_debts_settlement']
+    (debtor_membership_id, status) [name: 'idx_debts_debtor_status']
+    (creditor_membership_id, status) [name: 'idx_debts_creditor_status']
+    (group_id, status) [name: 'idx_debts_group_status']
+  }
+  checks {
+    `original_amount > 0` [name: 'chk_debts_original_amount_positive']
+    `outstanding_amount >= 0 AND outstanding_amount <= original_amount` [name: 'chk_debts_outstanding_amount_range']
+    `debtor_membership_id <> creditor_membership_id` [name: 'chk_debts_distinct_parties']
+    `(status = 'OUTSTANDING' AND outstanding_amount > 0 AND paid_at IS NULL) OR (status = 'PAID' AND outstanding_amount = 0 AND paid_at IS NOT NULL)` [name: 'chk_debts_lifecycle']
+  }
+}
+
+Table payments {
+  id uuid [pk, not null]
+  debt_id uuid [not null]
+  group_id uuid [not null]
+  debtor_membership_id uuid [not null]
+  amount numeric(19,4) [not null]
+  currency_code varchar(3) [not null]
+  status payment_status [not null, default: 'PENDING']
+  submitted_at timestamptz [not null, default: `now()`]
+  reviewed_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  Indexes {
+    (debt_id, status) [name: 'idx_payments_debt_status']
+    (debtor_membership_id, status) [name: 'idx_payments_debtor_status']
+    (group_id, status) [name: 'idx_payments_group_status']
+  }
+  checks {
+    `amount > 0` [name: 'chk_payments_amount_positive']
+    `(status = 'PENDING' AND reviewed_at IS NULL) OR (status IN ('CONFIRMED', 'REJECTED') AND reviewed_at IS NOT NULL)` [name: 'chk_payments_lifecycle']
+  }
+}
+
+Table activity_logs {
+  id uuid [pk, not null]
+  group_id uuid [not null]
+  actor_user_id uuid [not null]
+  actor_membership_id uuid
+  action_type varchar(100) [not null]
+  entity_type varchar(100) [not null]
+  entity_id uuid
+  metadata jsonb [not null, default: `'{}'`]
+  occurred_at timestamptz [not null, default: `now()`]
+  Indexes {
+    (group_id, occurred_at) [name: 'idx_activity_logs_group_occurred_at']
+    (actor_user_id, occurred_at) [name: 'idx_activity_logs_actor_user_occurred_at']
+    (entity_type, entity_id, occurred_at) [name: 'idx_activity_logs_entity_occurred_at']
+  }
+}
+
+Ref: groups.currency_code > currency_codes.code
+Ref: expenses.(group_id, currency_code) > groups.(id, currency_code)
+Ref: expenses.(payer_membership_id, group_id) > memberships.(id, group_id)
+Ref: expenses.(settlement_id, group_id) > settlements.(id, group_id)
+Ref: expense_participants.(expense_id, group_id) > expenses.(id, group_id)
+Ref: expense_participants.(membership_id, group_id) > memberships.(id, group_id)
+Ref: debts.(settlement_id, group_id) > settlements.(id, group_id)
+Ref: debts.(debtor_membership_id, group_id) > memberships.(id, group_id)
+Ref: debts.(creditor_membership_id, group_id) > memberships.(id, group_id)
+Ref: debts.(group_id, currency_code) > groups.(id, currency_code)
+Ref: payments.(debt_id, group_id, debtor_membership_id, currency_code) > debts.(id, group_id, debtor_membership_id, currency_code)
+Ref: activity_logs.group_id > groups.id
+Ref: activity_logs.actor_user_id > users.id
+Ref: activity_logs.(actor_membership_id, group_id) > memberships.(id, group_id)
+
+// PostgreSQL migration requirements:
+// - Enable the citext extension before creating users.
+// - Seed currency_codes exclusively from the ISO 4217 code set; do not allow application writes.
+// - Use ON DELETE RESTRICT / NO ACTION for historical foreign keys.
+// - Create a partial unique index on memberships (user_id, group_id) WHERE status = 'ACTIVE'.
+// - Reject Group archive reversal and Membership terminal-state reactivation.
+// - Reject changes to groups.currency_code.
+// - Enforce BR-001 (at least one ACTIVE OWNER) transactionally.
+// - Enforce BR-014B participant sum/percentage rules in the same Expense transaction, preferably with a deferred constraint trigger.
+// - Enforce Settlement generation atomically: only ACTIVE Expenses, then mark them SETTLED and create Debts.
+// - Allow Settlement COMPLETED only when every Debt in that Settlement is PAID; transition is terminal.
+// - Use locking / a transaction to reserve and confirm Payments without exceeding Debt.outstanding_amount.
+// - Make Debt original fields, financial history, and ActivityLog immutable after creation as required by the domain.
+// - Maintain updated_at with a PostgreSQL trigger or equivalent persistence mechanism.

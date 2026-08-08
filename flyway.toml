@@ -1,0 +1,5 @@
+[flyway]
+locations = ["filesystem:database/migrations"]
+validateMigrationNaming = true
+validateOnMigrate = true
+cleanDisabled = true

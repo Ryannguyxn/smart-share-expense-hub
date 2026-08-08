@@ -1,0 +1,18 @@
+# Local Flyway connection settings
+flyway.user.toml
+
+# IDE and editor files
+.idea/
+.vscode/
+*.iml
+
+# Build outputs
+target/
+build/
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
