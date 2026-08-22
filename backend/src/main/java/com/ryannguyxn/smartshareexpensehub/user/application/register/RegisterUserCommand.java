@@ -16,4 +16,9 @@ public record RegisterUserCommand(String email, String rawPassword) {
             throw new IllegalArgumentException("rawPassword must not be blank");
         }
     }
+
+    @Override
+    public String toString() {
+        return "RegisterUserCommand[email=" + email + ", rawPassword=[REDACTED]]";
+    }
 }
