@@ -18,10 +18,18 @@ public class UserSecurityConfiguration {
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         return http
                 .csrf(csrf -> csrf.ignoringRequestMatchers(
-                        PathPatternRequestMatcher.pathPattern(HttpMethod.POST, "/api/v1/users")
+                        PathPatternRequestMatcher.pathPattern(
+                                HttpMethod.POST,
+                                "/api/v1/users"
+                        ),
+                        PathPatternRequestMatcher.pathPattern(
+                                HttpMethod.POST,
+                                "/api/v1/authentication"
+                        )
                 ))
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(HttpMethod.POST, "/api/v1/users").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/authentication").permitAll()
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(exceptionHandling -> exceptionHandling
