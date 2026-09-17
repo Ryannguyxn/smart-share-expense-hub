@@ -14,6 +14,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.UUID;
@@ -132,6 +134,15 @@ class RegisterUserControllerTest {
         @Bean
         RegisterUserUseCase registerUserUseCase() {
             return new ControllableRegisterUserUseCase();
+        }
+
+        @Bean
+        JwtDecoder jwtDecoder() {
+            return token -> {
+                throw new JwtException(
+                        "JWT decoding is not used in this controller test"
+                );
+            };
         }
     }
 

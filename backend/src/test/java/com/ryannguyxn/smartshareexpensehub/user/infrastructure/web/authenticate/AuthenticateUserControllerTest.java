@@ -13,6 +13,8 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -133,6 +135,13 @@ class AuthenticateUserControllerTest {
         @Bean
         AuthenticateUserUseCase authenticateUserUseCase() {
             return new ControllableAuthenticateUserUseCase();
+        }
+
+        @Bean
+        JwtDecoder jwtDecoder() {
+            return token -> {
+                throw new JwtException("JWT decoding is not used in this controller test");
+            };
         }
     }
 
