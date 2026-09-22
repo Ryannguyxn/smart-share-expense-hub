@@ -33,10 +33,19 @@ public final class SystemRoleJwtAuthenticationConverter
                 new SimpleGrantedAuthority("ROLE_" + systemRole.name())
         );
 
+        String userId = jwt.getSubject();
+
+        if (userId == null || userId.isBlank()) {
+            throw new OAuth2AuthenticationException(
+                    new OAuth2Error("invalid_token"),
+                    "Missing JWT Subject"
+            );
+        }
+
         return new JwtAuthenticationToken(
                 jwt,
                 authorities,
-                jwt.getSubject()
+                userId
         );
     }
 }

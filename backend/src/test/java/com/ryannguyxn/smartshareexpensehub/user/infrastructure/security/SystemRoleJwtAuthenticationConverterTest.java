@@ -83,4 +83,17 @@ class SystemRoleJwtAuthenticationConverterTest {
                 () -> converter.convert(jwt)
         );
     }
+
+    @Test
+    void shouldRejectMissingSubject() {
+        Jwt jwt = Jwt.withTokenValue("test-token")
+                .header("alg", "HS256")
+                .claim("systemRole", "USER")
+                .build();
+
+        assertThrows(
+                OAuth2AuthenticationException.class,
+                () -> converter.convert(jwt)
+        );
+    }
 }
